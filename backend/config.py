@@ -14,3 +14,6 @@ DEBUG_DIR = os.environ.get("DEBUG_DIR", "")
 # Set to True when running in production (on the hosted version)
 # Used as a feature flag to enable or disable certain features
 IS_PROD = os.environ.get("IS_PROD", False)
+
+# Set to True if using http://api.shuttleai.app/v1
+IS_SHUTTLE = os.environ.get("IS_SHUTTLE", True)

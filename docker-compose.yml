@@ -13,6 +13,9 @@ services:
     # environment:
       #- BACKEND_PORT=7001   # if you change the port, make sure to also change the VITE_WS_BACKEND_URL at frontend/.env.local
       # - OPENAI_API_KEY=your_openai_api_key
+
+    volumes:
+      - ./backend:/app
     
     ports:
       - "${BACKEND_PORT:-7001}:${BACKEND_PORT:-7001}"
@@ -25,3 +28,8 @@ services:
       dockerfile: Dockerfile
     ports:
       - "5173:5173"
+    env_file:
+      - .env  
+    # volumes:
+    #   - ./frontend:/app
+    command: yarn dev --host 0.0.0.0

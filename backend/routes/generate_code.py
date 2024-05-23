@@ -2,7 +2,7 @@ import os
 import traceback
 from fastapi import APIRouter, WebSocket
 import openai
-from config import ANTHROPIC_API_KEY, IS_PROD, SHOULD_MOCK_AI_RESPONSE
+from config import ANTHROPIC_API_KEY, IS_PROD, SHOULD_MOCK_AI_RESPONSE, IS_SHUTTLE
 from custom_types import InputMode
 from llm import (
     Llm,
@@ -10,13 +10,16 @@ from llm import (
     stream_claude_response,
     stream_claude_response_native,
     stream_openai_response,
+    ShuttleaiLLM,
+    convert_frontend_str_to__shuttleai_llm,
+    stream_shuttleai_response,
 )
 from openai.types.chat import ChatCompletionMessageParam
 from mock_llm import mock_completion
 from typing import Dict, List, cast, get_args
 from image_generation import create_alt_url_mapping, generate_images
 from prompts import assemble_imported_code_prompt, assemble_prompt
-from datetime import datetime
+# from datetime import datetime
 import json
 from prompts.claude_prompts import VIDEO_PROMPT
 from prompts.types import Stack
@@ -27,7 +30,6 @@ from ws.constants import APP_ERROR_WEB_SOCKET_CODE  # type: ignore
 
 
 router = APIRouter()
-
 
 def write_logs(prompt_messages: List[ChatCompletionMessageParam], completion: str):
     # Get the logs path from environment, default to the current working directory
@@ -41,7 +43,8 @@ def write_logs(prompt_messages: List[ChatCompletionMessageParam], completion: st
     print("Writing to logs directory:", logs_directory)
 
     # Generate a unique filename using the current timestamp within the logs directory
-    filename = datetime.now().strftime(f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
+    # filename = datetime.now().strftime(f"{logs_directory}/messages_%Y%m%d_%H%M%S.json")
+    filename = f"{logs_directory}/debug_log.json"
 
     # Write the messages dict into a new file for each run
     with open(filename, "w") as f:
@@ -53,6 +56,8 @@ async def stream_code(websocket: WebSocket):
     await websocket.accept()
 
     print("Incoming websocket connection...")
+    print(f"IS_SHUTTLE: {'True' if IS_SHUTTLE is True else 'False'}")
+
 
     async def throw_error(
         message: str,
@@ -84,19 +89,37 @@ async def stream_code(websocket: WebSocket):
     validated_input_mode = cast(InputMode, input_mode)
 
     # Read the model from the request. Fall back to default if not provided.
-    code_generation_model_str = params.get(
-        "codeGenerationModel", Llm.GPT_4O_2024_05_13.value
-    )
-    try:
-        code_generation_model = convert_frontend_str_to_llm(code_generation_model_str)
-    except:
-        await throw_error(f"Invalid model: {code_generation_model_str}")
-        raise Exception(f"Invalid model: {code_generation_model_str}")
-    exact_llm_version = None
+    
+    if IS_SHUTTLE is True:
+        print("Generating code using ShuttleaiLLM...")
+        code_generation_model_str = params.get(
+            "codeGenerationModel", ShuttleaiLLM.GPT_4O_2024_05_13.value
+        )
+        try:
+            code_generation_model = convert_frontend_str_to__shuttleai_llm(code_generation_model_str)
+        except:
+            await throw_error(f"Invalid model: {code_generation_model_str}")
+            raise Exception(f"Invalid model: {code_generation_model_str}")
+        exact_llm_version = None
 
-    print(
-        f"Generating {generated_code_config} code for uploaded {input_mode} using {code_generation_model} model..."
-    )
+        print(
+            f"Generating {generated_code_config} code for uploaded {input_mode} using {code_generation_model} model..."
+        )
+
+    else:    
+        code_generation_model_str = params.get(
+            "codeGenerationModel", Llm.GPT_4O_2024_05_13.value
+        )
+        try:
+            code_generation_model = convert_frontend_str_to_llm(code_generation_model_str)
+        except:
+            await throw_error(f"Invalid model: {code_generation_model_str}")
+            raise Exception(f"Invalid model: {code_generation_model_str}")
+        exact_llm_version = None
+
+        print(
+            f"Generating {generated_code_config} code for uploaded {input_mode} using {code_generation_model} model..."
+        )
 
     # Get the OpenAI API key from the request. Fall back to environment variable if not provided.
     # If neither is provided, we throw an error.
@@ -210,8 +233,6 @@ async def stream_code(websocket: WebSocket):
         video_data_url = params["image"]
         prompt_messages = await assemble_claude_prompt_video(video_data_url)
 
-    # pprint_prompt(prompt_messages)  # type: ignore
-
     if SHOULD_MOCK_AI_RESPONSE:
         completion = await mock_completion(
             process_chunk, input_mode=validated_input_mode
@@ -247,13 +268,22 @@ async def stream_code(websocket: WebSocket):
                     callback=lambda x: process_chunk(x),
                 )
                 exact_llm_version = code_generation_model
+            elif IS_SHUTTLE is True:
+                completion = await stream_shuttleai_response( # type: ignore
+                    prompt_messages,  # type: ignore
+                    api_key=openai_api_key, # type: ignore
+                    base_url=openai_base_url,
+                    callback=lambda x: process_chunk(x),
+                    model=code_generation_model, # type: ignore
+                )
+                exact_llm_version = code_generation_model
             else:
                 completion = await stream_openai_response(
                     prompt_messages,  # type: ignore
-                    api_key=openai_api_key,
+                    api_key=openai_api_key, # type: ignore
                     base_url=openai_base_url,
                     callback=lambda x: process_chunk(x),
-                    model=code_generation_model,
+                    model=code_generation_model, # type: ignore
                 )
                 exact_llm_version = code_generation_model
         except openai.AuthenticationError as e:
@@ -292,7 +322,7 @@ async def stream_code(websocket: WebSocket):
             return await throw_error(error_message)
 
     if validated_input_mode == "video":
-        completion = extract_tag_content("html", completion)
+        completion = extract_tag_content("html", completion) # type: ignore
 
     print("Exact used model for generation: ", exact_llm_version)
 
@@ -305,13 +335,13 @@ async def stream_code(websocket: WebSocket):
                 {"type": "status", "value": "Generating images..."}
             )
             updated_html = await generate_images(
-                completion,
-                api_key=openai_api_key,
+                completion, # type: ignore
+                api_key=openai_api_key, # type: ignore
                 base_url=openai_base_url,
                 image_cache=image_cache,
             )
         else:
-            updated_html = completion
+            updated_html = completion # type: ignore
         await websocket.send_json({"type": "setCode", "value": updated_html})
         await websocket.send_json(
             {"type": "status", "value": "Code generation complete."}

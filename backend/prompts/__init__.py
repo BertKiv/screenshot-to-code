@@ -1,10 +1,12 @@
-from typing import List, NoReturn, Union
+import json
+from typing import List, Union
 
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionContentPartParam
 
 from prompts.imported_code_prompts import IMPORTED_CODE_SYSTEM_PROMPTS
 from prompts.screenshot_system_prompts import SYSTEM_PROMPTS
 from prompts.types import Stack
+from config import IS_SHUTTLE
 
 
 USER_PROMPT = """
@@ -58,6 +60,9 @@ def assemble_prompt(
         },
     ]
 
+    if IS_SHUTTLE is True:
+        user_content = json.dumps(user_content)  # type: ignore
+
     # Include the result image if it exists
     if result_image_data_url:
         user_content.insert(
@@ -75,5 +80,5 @@ def assemble_prompt(
         {
             "role": "user",
             "content": user_content,
-        },
+        }, # type: ignore
     ]

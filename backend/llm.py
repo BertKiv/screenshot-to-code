@@ -5,6 +5,8 @@ from openai import AsyncOpenAI
 from openai.types.chat import ChatCompletionMessageParam, ChatCompletionChunk
 from config import IS_DEBUG_ENABLED
 from debug.DebugFileWriter import DebugFileWriter
+from shuttleai import * # type: ignore
+import logging
 
 from utils import pprint_prompt
 
@@ -27,7 +29,7 @@ def convert_frontend_str_to_llm(frontend_str: str) -> Llm:
         return Llm.CLAUDE_3_SONNET
     else:
         return Llm(frontend_str)
-
+    
 
 async def stream_openai_response(
     messages: List[ChatCompletionMessageParam],
@@ -215,3 +217,64 @@ async def stream_claude_response_native(
         raise Exception("No HTML response found in AI response")
     else:
         return response.content[0].text
+
+
+# Client for the Shuttleai API
+
+# This enum class is the same as Llm, but it is used with shuttleai
+class ShuttleaiLLM(Enum):
+    GPT_4_VISION = "gpt-4-1106-vision-preview"
+    GPT_4_TURBO_2024_04_09 = "gpt-4-turbo-2024-04-09"
+    GPT_4O_2024_05_13 = "gpt-4o-2024-05-13"
+    SHUTTLE_2_TURBO = "shuttle-2-turbo"
+    GPT_35_TURBO_1106 = "gpt-3.5-turbo-1106"
+    GEMINI_15_PRO_LATEST = "gemini-1.5-pro-latest" 
+
+
+# Will throw errors if you send a garbage string
+def convert_frontend_str_to__shuttleai_llm(frontend_str: str) -> ShuttleaiLLM:
+    if frontend_str == "gpt_4_vision":
+        return ShuttleaiLLM.GPT_4_VISION
+    # elif frontend_str == "claude_3_sonnet":
+    #     return ShuttleaiLLM.CLAUDE_3_SONNET
+    else:        
+        return ShuttleaiLLM(frontend_str)
+
+async def stream_shuttleai_response(
+    messages: List[ChatCompletionMessageParam],
+    api_key: str,
+    base_url: str | None,
+    callback: Callable[[str], Awaitable[None]],
+    model: ShuttleaiLLM,
+) -> str:
+    params = {
+        "model": model.value,
+        "messages": messages,
+        "stream": True,
+        "plain": False,
+        "temperature": 0.0,
+    }
+
+    # Add 'max_tokens' only if the model is a GPT4 vision or Turbo model
+    if (
+        model == ShuttleaiLLM.GPT_4_VISION
+        or model == ShuttleaiLLM.GPT_4_TURBO_2024_04_09
+        or model == ShuttleaiLLM.GPT_4O_2024_05_13
+    ):
+        params["max_tokens"] = 4096
+
+    full_response = ""
+    async with ShuttleAsyncClient(api_key, base_url, timeout=600) as shuttle:
+        stream = await shuttle.chat_completion(**params)  # type: ignore
+        async for chunk in stream: # type: ignore
+            try:
+                if hasattr(chunk, "choices") and hasattr(chunk.choices[0].delta, "content"): # type: ignore
+                    content = chunk.choices[0].delta.content or "" # type: ignore
+                    full_response += content # type: ignore
+                    await callback(content) # type: ignore
+                else:
+                    logging.error(f"Unexpected chunk structure: {chunk}")
+            except Exception as e:
+                print(f"Exception encountered: {e}")
+                raise e   
+    return full_response # type: ignore

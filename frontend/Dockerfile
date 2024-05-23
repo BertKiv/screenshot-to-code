@@ -4,7 +4,7 @@ FROM node:20.9-bullseye-slim
 WORKDIR /app
 
 # Copy package.json and yarn.lock
-COPY package.json yarn.lock /app/
+COPY package.json /app/
 
 # Install dependencies
 RUN yarn install
@@ -16,4 +16,4 @@ COPY ./ /app/
 EXPOSE 5173
 
 # Command to run the application
-CMD ["yarn", "dev", "--host", "0.0.0.0"]
+# CMD ["yarn", "dev", "--host", "0.0.0.0"]

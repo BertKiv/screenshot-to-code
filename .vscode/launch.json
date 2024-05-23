@@ -1,0 +1,17 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug z Poetry",
+            "type": "python",
+            "request": "launch",
+            "program": "${workspaceFolder}/backend/start.py",
+            "console": "integratedTerminal",
+            "env": {
+                "PYTHONUNBUFFERED": "1"
+            },
+            "python": "${workspaceFolder}/backend/.venv/bin/python",
+            "justMyCode": false
+        }
+    ]
+}
